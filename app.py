@@ -4,6 +4,7 @@ import requests
 import os
 import re
 import time
+import hashlib
 from pydub import AudioSegment
 from io import BytesIO
 from dotenv import load_dotenv
@@ -11,9 +12,98 @@ from dotenv import load_dotenv
 # Load API Key
 load_dotenv()
 VOICERSS_KEY = os.getenv("VOICERSS_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+DAILY_LIMIT = 5
 
 # Page setup
 st.set_page_config(page_title="Quillcho", page_icon="🪶", layout="centered")
+
+def get_ip_hash():
+    """Get visitor's IP and return a hashed version for privacy."""
+    try:
+        headers = st.context.headers
+        ip = headers.get("x-forwarded-for", "unknown")
+        # x-forwarded-for can contain multiple IPs, so we take the first one
+        ip = ip.split(",")[0].strip()
+    except Exception:
+        ip = "unknown"
+    return hashlib.sha256(ip.encode()).hexdigest()
+
+def check_usage(ip_hash):
+    """Check how many conversions this IP has used today."""
+    today = time.strftime("%Y-%m-%d")
+
+    response = requests.get(
+        f"{SUPABASE_URL}/rest/v1/usage_logs",
+        headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+        },
+        params={
+            "ip_hash": f"eq.{ip_hash}",
+            "date": f"eq.{today}",
+            "select": "usage_count",
+        }
+    )
+
+    if response.status_code == 200:
+        data = response.json()
+        if data:
+            return data[0]["usage_count"]
+    return 0
+
+def increment_usage(ip_hash):
+    """Increment usage count for this IP today, or create a new entry."""
+    today = time.strftime("%Y-%m-%d")
+    current = check_usage(ip_hash)
+
+    if current > 0:
+        # Update existing entry
+        requests.patch(
+            f"{SUPABASE_URL}/rest/v1/usage_logs",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            params={
+                "ip_hash": f"eq.{ip_hash}",
+                "date": f"eq.{today}",
+            },
+            json={"usage_count": current + 1}
+        )
+    else:
+        # Insert new entry
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/usage_logs",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json={
+                "ip_hash": ip_hash,
+                "usage_count": 1,
+                "date": today,
+            }
+        )
+
+def cleanup_old_entries():
+    """Delete entries older than today to keep the table clean."""
+    today = time.strftime("%Y-%m-%d")
+    requests.delete(
+        f"{SUPABASE_URL}/rest/v1/usage_logs",
+        headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+        },
+        params={
+            "date": f"lt.{today}",
+        }
+    )
 
 # Custom CSS
 st.markdown("""
@@ -108,119 +198,143 @@ if uploaded_file is not None:
     selected_voice = st.selectbox("Choose a voice", options=voice_options.keys())
     voice, language = voice_options[selected_voice]
 
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        convert_clicked = st.button("Convert to Audio", type="primary", use_container_width=True)
+    ip_hash = get_ip_hash()
+    usage = check_usage(ip_hash)
+    cleanup_old_entries()
 
-    if convert_clicked:
-        with st.spinner("Extracting text..."):
-            # Re-open PDF from byes and extract only selected pages
-            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-            full_text = ""
-            for page_num in range(start_page - 1, end_page):
-                full_text += doc[page_num].get_text()
-            doc.close()
+    remaining = DAILY_LIMIT - usage
+    if remaining <= 0:
+        st.warning("You've reached the daily conversion limit. Please come back tomorrow!")
 
-            # Add pauses after headings and short lines without punctuation
-            lines = full_text.split("\n")
-            processed_lines = []
-            for line in lines:
-                stripped = line.strip()
-                if stripped and len(stripped) < 60 and not stripped[-1] in ".!?,:;":
-                    stripped += "."
-                processed_lines.append(stripped)
-            full_text = "\n".join(processed_lines)
+    if remaining > 0:
+        remaining_text = st.empty()
+        remaining_text.markdown(
+            f"<p style='text-align: center; color: #6B6864;'>{remaining} conversion(s) remaining today</p>",
+            unsafe_allow_html=True
+        )
 
-            # Clean up text:
-            full_text = full_text.replace("\n", " ")
-            full_text = re.sub(r"\s+", " ", full_text)
-            full_text = full_text.replace("- ", "")
-            full_text = full_text.replace("—", ",")  # em dash → comma for proper pause
-            full_text = full_text.replace("–", ",")  # en dash → comma (same reason)
-            full_text = full_text.strip()
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            convert_clicked = st.button("Convert to Audio", type="primary", use_container_width=True)
 
-        # Split text into chunks at sentence boundaries (~5000 characters)
-        def chunk_text(text, max_chars=5000):
-            sentences = text.split(". ")
-            chunks = []
-            current_chunk = ""
+        if convert_clicked:
+            with st.spinner("Extracting text..."):
+                # Re-open PDF from byes and extract only selected pages
+                doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                full_text = ""
+                for page_num in range(start_page - 1, end_page):
+                    full_text += doc[page_num].get_text()
+                doc.close()
 
-            for sentence in sentences:
-                # If adding this sentence would exceed the limit, save current chunk
-                if len(current_chunk) + len(sentence) > max_chars:
-                    chunks.append(current_chunk.strip())
-                    current_chunk = sentence + ". "
-                else:
-                    current_chunk += sentence + ". "
+                # Add pauses after headings and short lines without punctuation
+                lines = full_text.split("\n")
+                processed_lines = []
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped and len(stripped) < 60 and not stripped[-1] in ".!?,:;":
+                        stripped += "."
+                    processed_lines.append(stripped)
+                full_text = "\n".join(processed_lines)
 
-            # Add last chunk
-            if current_chunk:
-                chunks.append(current_chunk.strip())
+                # Clean up text:
+                full_text = full_text.replace("\n", " ")
+                full_text = re.sub(r"\s+", " ", full_text)
+                full_text = full_text.replace("- ", "")
+                full_text = full_text.replace("—", ",")  # em dash → comma for proper pause
+                full_text = full_text.replace("–", ",")  # en dash → comma (same reason)
+                full_text = full_text.strip()
 
-            return chunks
+            # Split text into chunks at sentence boundaries (~5000 characters)
+            def chunk_text(text, max_chars=5000):
+                sentences = text.split(". ")
+                chunks = []
+                current_chunk = ""
 
-        chunks = chunk_text(full_text)
-        combined_audio = AudioSegment.empty()  # start with empty audio
-        error_occurred = False
-
-        progress_bar = st.progress(0, text="Converting to audio...")
-
-        for i, chunk in enumerate(chunks):
-            params = {
-                "key": VOICERSS_KEY,
-                "src": chunk,
-                "hl": language,
-                "v": voice,
-                "c": "MP3",
-                "f": "44khz_16bit_stereo"
-            }
-
-            max_retries = 3
-            success = False
-
-            for attempt in range(max_retries):
-                try:
-                    response = requests.post("https://api.voicerss.org/", data=params)
-
-                    content_type = response.headers.get("Content-Type", "")
-                    if response.status_code == 200 and "audio" in content_type:
-                        chunk_audio = AudioSegment.from_mp3(BytesIO(response.content))
-                        combined_audio += chunk_audio
-                        success = True
-                        break
+                for sentence in sentences:
+                    # If adding this sentence would exceed the limit, save current chunk
+                    if len(current_chunk) + len(sentence) > max_chars:
+                        chunks.append(current_chunk.strip())
+                        current_chunk = sentence + ". "
                     else:
+                        current_chunk += sentence + ". "
+
+                # Add last chunk
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+
+                return chunks
+
+            chunks = chunk_text(full_text)
+            combined_audio = AudioSegment.empty()  # start with empty audio
+            error_occurred = False
+
+            progress_bar = st.progress(0, text="Converting to audio...")
+
+            for i, chunk in enumerate(chunks):
+                params = {
+                    "key": VOICERSS_KEY,
+                    "src": chunk,
+                    "hl": language,
+                    "v": voice,
+                    "c": "MP3",
+                    "f": "44khz_16bit_stereo"
+                }
+
+                max_retries = 3
+                success = False
+
+                for attempt in range(max_retries):
+                    try:
+                        response = requests.post("https://api.voicerss.org/", data=params)
+
+                        content_type = response.headers.get("Content-Type", "")
+                        if response.status_code == 200 and "audio" in content_type:
+                            chunk_audio = AudioSegment.from_mp3(BytesIO(response.content))
+                            combined_audio += chunk_audio
+                            success = True
+                            break
+                        else:
+                            time.sleep(1)
+
+                    except Exception:
                         time.sleep(1)
 
-                except Exception:
+                if success:
+                    progress = (i + 1) / len(chunks)
+                    progress_bar.progress(progress, text=f"Converting part {i + 1} of {len(chunks)}...")
                     time.sleep(1)
 
-            if success:
-                progress = (i + 1) / len(chunks)
-                progress_bar.progress(progress, text=f"Converting part {i + 1} of {len(chunks)}...")
-                time.sleep(1)
+                else:
+                    st.error(f"Something went wrong with the conversion. Please try again.")
+                    error_occurred = True
+                    break
 
-            else:
-                st.error(f"Something went wrong with the conversion. Please try again.")
-                error_occurred = True
-                break
+            # Export combined audio back to bytes
+            if not error_occurred:
+                progress_bar.progress(1.0, text="Conversion complete!")
+                increment_usage(ip_hash)
+                remaining -= 1
+                if remaining > 0:
+                    remaining_text.markdown(
+                        f"<p style='text-align: center; color: #6B6864;'>{remaining} conversion(s) remaining today</p>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.warning("You've used your last conversion for today.")
+                output_buffer = BytesIO()
+                combined_audio.export(output_buffer, format="mp3")
+                audio_bytes = output_buffer.getvalue()
 
-        # Export combined audio back to bytes
-        if not error_occurred:
-            progress_bar.progress(1.0, text="Conversion complete!")
-            output_buffer = BytesIO()
-            combined_audio.export(output_buffer, format="mp3")
-            audio_bytes = output_buffer.getvalue()
-
-        if not error_occurred:
-            st.success("Done!")
-            st.audio(audio_bytes, format="audio/mp3")
-            col1, col2, col3 = st.columns([1, 1, 1])
-            with col2:
-                st.download_button(
-                    type="primary",
-                    label="Download MP3",
-                    data=audio_bytes,
-                    file_name="audiobook.mp3",
-                    mime="audio/mp3",
-                    use_container_width=True
-                )
+            if not error_occurred:
+                st.success("Done!")
+                st.audio(audio_bytes, format="audio/mp3")
+                col1, col2, col3 = st.columns([1, 1, 1])
+                with col2:
+                    st.download_button(
+                        type="primary",
+                        label="Download MP3",
+                        data=audio_bytes,
+                        file_name="audiobook.mp3",
+                        mime="audio/mp3",
+                        use_container_width=True
+                    )
