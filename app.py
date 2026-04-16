@@ -98,6 +98,15 @@ if uploaded_file is not None:
     else:
         start_page, end_page = 1, 1
 
+    # Voice selection
+    voice_options = {
+        "Mary (US Female)": ("Mary", "en-us"),
+        "Nancy (UK Female)": ("Nancy", "en-gb"),
+    }
+
+    selected_voice = st.selectbox("Choose a voice", options=voice_options.keys())
+    voice, language = voice_options[selected_voice]
+
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         convert_clicked = st.button("Convert to Audio", type="primary", use_container_width=True)
@@ -160,8 +169,8 @@ if uploaded_file is not None:
                     params = {
                         "key": VOICERSS_KEY,
                         "src": chunk,
-                        "hl": "en-us",
-                        "v": "Mary",
+                        "hl": language,
+                        "v": voice,
                         "c": "MP3",
                         "f": "44khz_16bit_stereo"
                     }
