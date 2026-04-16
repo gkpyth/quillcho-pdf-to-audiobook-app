@@ -75,18 +75,51 @@ uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
 
 # Convert button (only shows if a file is uploaded)
 if uploaded_file is not None:
+    # Read the PDF once to get the number of pages
+    pdf_bytes = uploaded_file.read()
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    total_pages = len(doc)
+    doc.close()
+
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        st.markdown(f"<p style='text-align: center;'>PDF has <strong>{total_pages}</strong> page(s)</p>", unsafe_allow_html=True)
+
+    # Page range selector
+    if total_pages > 1:
+        page_range = st.slider(
+            "Select pages to convert",
+            min_value=1,
+            max_value=total_pages,
+            value=(1, total_pages),         # Default to all pages
+            step=1,
+        )
+        start_page, end_page = page_range
+    else:
+        start_page, end_page = 1, 1
+
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         convert_clicked = st.button("Convert to Audio", type="primary", use_container_width=True)
+
     if convert_clicked:
         with st.spinner("Extracting text..."):
-            # Read PDF from uploaded file
-            pdf_bytes = uploaded_file.read()
+            # Re-open PDF from byes and extract only selected pages
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             full_text = ""
-            for page in doc:
-                full_text += page.get_text()
+            for page_num in range(start_page - 1, end_page):
+                full_text += doc[page_num].get_text()
             doc.close()
+
+            # Add pauses after headings and short lines without punctuation
+            lines = full_text.split("\n")
+            processed_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped and len(stripped) < 60 and not stripped[-1] in ".!?,:;":
+                    stripped += "."
+                processed_lines.append(stripped)
+            full_text = "\n".join(processed_lines)
 
             # Clean up text:
             full_text = full_text.replace("\n", " ")
@@ -133,7 +166,7 @@ if uploaded_file is not None:
                         "f": "44khz_16bit_stereo"
                     }
 
-                    response = requests.get("https://api.voicerss.org/", params=params)
+                    response = requests.post("https://api.voicerss.org/", data=params)
 
                     if response.status_code == 200 and not response.text.startswith("ERROR"):
                         # Convert response bytes to AudioSegment and append
