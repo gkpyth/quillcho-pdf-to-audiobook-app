@@ -3,6 +3,7 @@ import fitz
 import requests
 import os
 import re
+import time
 from pydub import AudioSegment
 from io import BytesIO
 from dotenv import load_dotenv
@@ -138,59 +139,77 @@ if uploaded_file is not None:
             full_text = full_text.replace("–", ",")  # en dash → comma (same reason)
             full_text = full_text.strip()
 
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            with st.spinner("Converting to audio..."):
-                # Split text into chunks at sentence boundaries (~5000 characters)
-                def chunk_text(text, max_chars=5000):
-                    sentences = text.split(". ")
-                    chunks = []
-                    current_chunk = ""
+        # Split text into chunks at sentence boundaries (~5000 characters)
+        def chunk_text(text, max_chars=5000):
+            sentences = text.split(". ")
+            chunks = []
+            current_chunk = ""
 
-                    for sentence in sentences:
-                        # If adding this sentence would exceed the limit, save current chunk
-                        if len(current_chunk) + len(sentence) > max_chars:
-                            chunks.append(current_chunk.strip())
-                            current_chunk = sentence + ". "
-                        else:
-                            current_chunk += sentence + ". "
+            for sentence in sentences:
+                # If adding this sentence would exceed the limit, save current chunk
+                if len(current_chunk) + len(sentence) > max_chars:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = sentence + ". "
+                else:
+                    current_chunk += sentence + ". "
 
-                    # Add last chunk
-                    if current_chunk:
-                        chunks.append(current_chunk.strip())
+            # Add last chunk
+            if current_chunk:
+                chunks.append(current_chunk.strip())
 
-                    return chunks
+            return chunks
 
-                chunks = chunk_text(full_text)
-                combined_audio = AudioSegment.empty()  # start with empty audio
-                error_occurred = False
+        chunks = chunk_text(full_text)
+        combined_audio = AudioSegment.empty()  # start with empty audio
+        error_occurred = False
 
-                for chunk in chunks:
-                    params = {
-                        "key": VOICERSS_KEY,
-                        "src": chunk,
-                        "hl": language,
-                        "v": voice,
-                        "c": "MP3",
-                        "f": "44khz_16bit_stereo"
-                    }
+        progress_bar = st.progress(0, text="Converting to audio...")
 
+        for i, chunk in enumerate(chunks):
+            params = {
+                "key": VOICERSS_KEY,
+                "src": chunk,
+                "hl": language,
+                "v": voice,
+                "c": "MP3",
+                "f": "44khz_16bit_stereo"
+            }
+
+            max_retries = 3
+            success = False
+
+            for attempt in range(max_retries):
+                try:
                     response = requests.post("https://api.voicerss.org/", data=params)
 
-                    if response.status_code == 200 and not response.text.startswith("ERROR"):
-                        # Convert response bytes to AudioSegment and append
+                    content_type = response.headers.get("Content-Type", "")
+                    if response.status_code == 200 and "audio" in content_type:
                         chunk_audio = AudioSegment.from_mp3(BytesIO(response.content))
                         combined_audio += chunk_audio
-                    else:
-                        st.error(f"Something went wrong: {response.text}")
-                        error_occurred = True
+                        success = True
                         break
+                    else:
+                        time.sleep(1)
 
-                # Export combined audio back to bytes
-                if not error_occurred:
-                    output_buffer = BytesIO()
-                    combined_audio.export(output_buffer, format="mp3")
-                    audio_bytes = output_buffer.getvalue()
+                except Exception:
+                    time.sleep(1)
+
+            if success:
+                progress = (i + 1) / len(chunks)
+                progress_bar.progress(progress, text=f"Converting part {i + 1} of {len(chunks)}...")
+                time.sleep(1)
+
+            else:
+                st.error(f"Something went wrong with the conversion. Please try again.")
+                error_occurred = True
+                break
+
+        # Export combined audio back to bytes
+        if not error_occurred:
+            progress_bar.progress(1.0, text="Conversion complete!")
+            output_buffer = BytesIO()
+            combined_audio.export(output_buffer, format="mp3")
+            audio_bytes = output_buffer.getvalue()
 
         if not error_occurred:
             st.success("Done!")
