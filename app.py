@@ -367,3 +367,15 @@ if uploaded_file is not None:
                         mime="audio/mp3",
                         use_container_width=True
                     )
+
+# Privacy Policy
+st.divider()
+with st.expander("Privacy Policy"):
+    st.markdown("""
+    **Quillcho** respects your privacy. Here's how your data is handled:
+    **PDF Files** - Your uploaded files are processed in memory and are never stored on our servers. Once your session ends, the data is gone.
+    **IP address tracking** - To prevent abuse of this free service, a hashed (anonymized) version of your IP address is tracked alongside a daily usage counter. The original IP address is never stored and cannot be recovered from the hash. This data is automatically deleted daily.
+    **Audio files** - Generated audio files exist only in your browser session. No files are stored or retained on the server side.
+    **Third-party services** - Quillcho uses VoiceRSS for text-to-speech conversion. Your text is sent to their API for processing. Please refer to [VoiceRSS's Privacy Policy](https://www.voicerss.org/terms.aspx) for details on their data handling.
+    **No cookies, no tracking, no analytics.** Quillcho collects only what's necessary to maintain fair usage limits.
+    """)
