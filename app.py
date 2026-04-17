@@ -30,14 +30,18 @@ st.set_page_config(page_title="Quillcho", page_icon="🪶", layout="centered")
 def get_ip_hash():
     """Get visitor's IP and return a hashed version for privacy."""
     try:
-        headers = st.context.headers
-        # Try multiple headers that Streamlit Cloud might use
-        ip = (
-            headers.get("x-real-ip") or
-            headers.get("x-forwarded-for", "unknown")
-        )
-        # x-forwarded-for can contain multiple IPs, take the first (original client)
-        ip = ip.split(",")[0].strip()
+        from streamlit import runtime
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        ctx = get_script_run_ctx()
+        if ctx is None:
+            return hashlib.sha256("unknown".encode()).hexdigest()
+
+        session_info = runtime.get_instance().get_client(ctx.session_id)
+        if session_info is None:
+            return hashlib.sha256("unknown".encode()).hexdigest()
+
+        ip = session_info.request.remote_ip
     except Exception:
         ip = "unknown"
     return hashlib.sha256(ip.encode()).hexdigest()
