@@ -204,12 +204,12 @@ if uploaded_file is not None:
 
     remaining = DAILY_LIMIT - usage
     if remaining <= 0:
-        st.warning("You've reached the daily conversion limit. Please come back tomorrow!")
+        st.warning("You've reached today's free conversion limit. This app runs on a free text-to-speech service with daily usage caps. Please come back tomorrow.\nThank you for using Quillcho!")
 
     if remaining > 0:
         remaining_text = st.empty()
         remaining_text.markdown(
-            f"<p style='text-align: center; color: #6B6864;'>{remaining} conversion(s) remaining today</p>",
+            f"<p style='text-align: center; color: #6B6864;'>{remaining} free conversion(s) remaining today</p>",
             unsafe_allow_html=True
         )
 
@@ -314,13 +314,13 @@ if uploaded_file is not None:
                 progress_bar.progress(1.0, text="Conversion complete!")
                 increment_usage(ip_hash)
                 remaining -= 1
-                if remaining > 0:
-                    remaining_text.markdown(
-                        f"<p style='text-align: center; color: #6B6864;'>{remaining} conversion(s) remaining today</p>",
-                        unsafe_allow_html=True
-                    )
-                else:
-                    st.warning("You've used your last conversion for today.")
+                remaining_text.markdown(
+                    f"<p style='text-align: center; color: #6B6864;'>{remaining} free conversion(s) remaining today</p>",
+                    unsafe_allow_html=True
+                )
+                if remaining == 0:
+                    st.warning("You've used your last free conversion for today. Please come back tomorrow.\nThank you for using Quillcho!")
+
                 output_buffer = BytesIO()
                 combined_audio.export(output_buffer, format="mp3")
                 audio_bytes = output_buffer.getvalue()
