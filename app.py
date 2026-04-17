@@ -390,6 +390,6 @@ with st.expander("Privacy Policy"):
 
 st.markdown(
     f"<p style='text-align: center; color: #6B6864; font-size: 0.85rem;'>"
-    f"Built with Python, Streamlit & VoiceRSS by <span style='color: #C4622D;'>Ghaleb Khadra</span> · {current_year}</p>",
+    f"Built with Python, Streamlit, VoiceRSS & Supabase by <span style='color: #C4622D;'>Ghaleb Khadra</span> · {current_year}</p>",
     unsafe_allow_html=True
 )
