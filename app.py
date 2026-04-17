@@ -9,11 +9,19 @@ from pydub import AudioSegment
 from io import BytesIO
 from dotenv import load_dotenv
 
-# Load API Key
-load_dotenv()
-VOICERSS_KEY = os.getenv("VOICERSS_KEY")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# Load API Keys
+try:
+    # Streamlit Cloud
+    VOICERSS_KEY = st.secrets["VOICERSS_KEY"]
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+except Exception:
+    # Local development
+    load_dotenv()
+    VOICERSS_KEY = os.getenv("VOICERSS_KEY")
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
 DAILY_LIMIT = 5
 
 # Page setup
