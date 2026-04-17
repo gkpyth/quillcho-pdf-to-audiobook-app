@@ -151,6 +151,13 @@ st.markdown("""
         margin-left: auto !important;
         margin-right: auto !important;
     }
+    
+    /* Hide honeypot field */
+    .st-key-url_field {
+        position: absolute !important;
+        left: -9999px !important;
+    }
+    
     </style>
     """, unsafe_allow_html=True)
 
@@ -160,6 +167,9 @@ st.markdown(
     unsafe_allow_html=True
 )
 st.write("Turn any PDF into an audiobook. Free, simple, and right in your browser.")
+
+# Bot protection - honeypot field (invisible to users, bots auto-fill it - cool trick!)
+bot_check = st.text_input("Website", key="url_field", label_visibility="hidden")
 
 # File Uploader
 uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
@@ -218,6 +228,9 @@ if uploaded_file is not None:
             convert_clicked = st.button("Convert to Audio", type="primary", use_container_width=True)
 
         if convert_clicked:
+            if bot_check:
+                st.error("Something went wrong. Please try again.")
+                st.stop()
             with st.spinner("Extracting text..."):
                 # Re-open PDF from byes and extract only selected pages
                 doc = fitz.open(stream=pdf_bytes, filetype="pdf")
