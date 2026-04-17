@@ -31,8 +31,12 @@ def get_ip_hash():
     """Get visitor's IP and return a hashed version for privacy."""
     try:
         headers = st.context.headers
-        ip = headers.get("x-forwarded-for", "unknown")
-        # x-forwarded-for can contain multiple IPs, so we take the first one
+        # Try multiple headers that Streamlit Cloud might use
+        ip = (
+            headers.get("x-real-ip") or
+            headers.get("x-forwarded-for", "unknown")
+        )
+        # x-forwarded-for can contain multiple IPs, take the first (original client)
         ip = ip.split(",")[0].strip()
     except Exception:
         ip = "unknown"
@@ -40,7 +44,7 @@ def get_ip_hash():
 
 def check_usage(ip_hash):
     """Check how many conversions this IP has used today."""
-    today = time.strftime("%Y-%m-%d")
+    today = time.strftime("%Y-%m-%d", time.gmtime())
 
     response = requests.get(
         f"{SUPABASE_URL}/rest/v1/usage_logs",
@@ -63,7 +67,7 @@ def check_usage(ip_hash):
 
 def increment_usage(ip_hash):
     """Increment usage count for this IP today, or create a new entry."""
-    today = time.strftime("%Y-%m-%d")
+    today = time.strftime("%Y-%m-%d", time.gmtime())
     current = check_usage(ip_hash)
 
     if current > 0:
@@ -101,7 +105,7 @@ def increment_usage(ip_hash):
 
 def cleanup_old_entries():
     """Delete entries older than today to keep the table clean."""
-    today = time.strftime("%Y-%m-%d")
+    today = time.strftime("%Y-%m-%d", time.gmtime())
     requests.delete(
         f"{SUPABASE_URL}/rest/v1/usage_logs",
         headers={
