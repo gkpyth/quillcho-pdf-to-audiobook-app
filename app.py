@@ -8,6 +8,7 @@ import hashlib
 from pydub import AudioSegment
 from io import BytesIO
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load API Keys
 try:
@@ -368,14 +369,27 @@ if uploaded_file is not None:
                         use_container_width=True
                     )
 
-# Privacy Policy
+# Footer
+current_year = datetime.now().year
+
 st.divider()
 with st.expander("Privacy Policy"):
-    st.markdown("""
-    **Quillcho** respects your privacy. Here's how your data is handled:
-    **PDF Files** - Your uploaded files are processed in memory and are never stored on our servers. Once your session ends, the data is gone.
-    **IP address tracking** - To prevent abuse of this free service, a hashed (anonymized) version of your IP address is tracked alongside a daily usage counter. The original IP address is never stored and cannot be recovered from the hash. This data is automatically deleted daily.
-    **Audio files** - Generated audio files exist only in your browser session. No files are stored or retained on the server side.
-    **Third-party services** - Quillcho uses VoiceRSS for text-to-speech conversion. Your text is sent to their API for processing. Please refer to [VoiceRSS's Privacy Policy](https://www.voicerss.org/terms.aspx) for details on their data handling.
-    **No cookies, no tracking, no analytics.** Quillcho collects only what's necessary to maintain fair usage limits.
-    """)
+    st.markdown(
+"""**Quillcho** respects your privacy. Here's how we handle your data:
+
+**PDF files** — Your uploaded files are processed in memory and are never stored on our servers. Once your session ends, the data is gone.
+
+**IP address tracking** — To prevent abuse of this free service, we track a hashed (anonymized) version of your IP address alongside a daily usage counter. The original IP address is never stored and cannot be recovered from the hash. This data is automatically deleted daily.
+
+**Audio files** — Generated audio files exist only in your browser session. We do not store or retain any converted audio.
+
+**Third-party services** — This app uses VoiceRSS for text-to-speech conversion. Your text is sent to their API for processing. Please refer to [VoiceRSS's privacy policy](https://www.voicerss.org/) for details on their data handling.
+
+**No cookies, no tracking, no analytics.** This app collects only what's necessary to maintain fair usage limits."""
+    )
+
+st.markdown(
+    f"<p style='text-align: center; color: #6B6864; font-size: 0.85rem;'>"
+    f"Built with Python, Streamlit & VoiceRSS by <span style='color: #C4622D;'>Ghaleb Khadra</span> · {current_year}</p>",
+    unsafe_allow_html=True
+)
